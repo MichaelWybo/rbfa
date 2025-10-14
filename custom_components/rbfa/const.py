@@ -23,10 +23,10 @@ VARIABLES = {
 
 HASHES = {
     'GetTeam':          '66888f01d376a6484c0c6824e5f266cb3c3513ab83964e50e0a7c30b8fddb4fa',
-    'GetTeamCalendar':  '63e80713dbe3f057aafb53348ebb61a2c52d3d6cda437d8b7e7bd78191990487',
-    'getClubInfo':      'd7160a293f090e50f5ef52b1459530e9a11b36bd75c3ee1bcfbd9057889e009f',
-    'GetUpcomingMatch': '82e90ddafc6823e8cc5c5d876073e0e01c261f6844ad8e8bab5b8fd0b17da5e1',
-    'GetMatchDetail':   '44adcb765b9b7159616dc339e33fcefa5b3aaadcc32a06cb6eece5855b1830c2',
+    'GetTeamCalendar':  '3f0441e6723b9852b4f0cff2c872f4aa674c5de2d23589efc70c7a4ffb7f6383',
+    'getClubInfo':      '7c1bd99f0001a20d60208c60d4fb7c99aefdb810b9ee1c4de21a6d6ba4804b58',
+    'GetUpcomingMatch': '7e0aa25b6dbe45cede5f1a16320b091be9078a7b9d8cb9cb1402fc35292696fb',
+    'GetMatchDetail':   'cd8867b845c206fe7aa75c1ebf7b53cbda0ff030253a45e2e2b4bcc13ee46c9a',
     'GetSeriesRankings': '7d13cbe2a17d6d5e7a3a0c1039d09c2e0ca326a454ec6fd2a471aa1fa2cf73e5',
 }
 
