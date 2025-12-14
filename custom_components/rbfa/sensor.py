@@ -1,11 +1,7 @@
 """Platform for sensor integration."""
 from __future__ import annotations
 
-from homeassistant.components.sensor import (
-    SensorDeviceClass,
-    SensorEntity,
-    SensorEntityDescription,
-)
+from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.config_entries import ConfigEntry
@@ -18,46 +14,6 @@ import logging
 
 _LOGGER = logging.getLogger(__name__)
 
-SENSORS = (
-    SensorEntityDescription(
-        key="starttime",
-        translation_key="starttime",
-        device_class = SensorDeviceClass.TIMESTAMP,
-    ),
-    SensorEntityDescription(
-        key="endtime",
-        translation_key="endtime",
-        device_class = SensorDeviceClass.TIMESTAMP,
-    ),
-    SensorEntityDescription(
-        key="hometeam",
-        translation_key="hometeam",
-    ),
-    SensorEntityDescription(
-        key="awayteam",
-        translation_key="awayteam",
-    ),
-    SensorEntityDescription(
-        key="location",
-        translation_key="location",
-        icon="mdi:soccer-field",
-    ),
-    SensorEntityDescription(
-        key="series",
-        translation_key="series",
-        icon="mdi:table-row",
-    ),
-    SensorEntityDescription(
-        key="referee",
-        translation_key="referee",
-        icon="mdi:whistle",
-    ),
-    SensorEntityDescription(
-        key="matchid",
-        translation_key="matchid",
-        icon="mdi:soccer",
-    ),
-)
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -66,100 +22,179 @@ async def async_setup_entry(
 ) -> None:
     """Set up RBFA sensor based on a config entry."""
     coordinator: MyCoordinator = hass.data[DOMAIN][entry.entry_id]
+    team_id = entry.data.get('team')
 
-    if 'show_referee' in entry.options:
-        show_referee = entry.options['show_referee']
-    elif 'alt_name' in entry.data:
-        show_referee = entry.data['show_referee']
-    else:
-        show_referee = True
-    _LOGGER.debug('show_referee: %r', show_referee)
+    # Créer exactement 3 entités
+    entities = [
+        RbfaTeamSensor(coordinator, entry, team_id),
+        RbfaMatchSensor(coordinator, entry, team_id, "last"),
+        RbfaMatchSensor(coordinator, entry, team_id, "upcoming"),
+    ]
 
-    all_sensors = []
-    for description in SENSORS:
-        if description.key == 'referee' and show_referee or description.key != 'referee':
-            all_sensors.append(
-                RbfaSensor(
-                    coordinator,
-                    description,
-                    entry,
-                    collection='upcoming',
-                )
-            )
-            all_sensors.append(
-                RbfaSensor(
-                    coordinator,
-                    description,
-                    entry,
-                    collection='lastmatch',
-                )
-            )
-    async_add_entities(
-        all_sensors
-    )
+    async_add_entities(entities)
 
-class RbfaSensor(RbfaEntity, SensorEntity):
-    """Representation of a Sensor."""
-    _attr_entity_registry_enabled_default = False
+
+class RbfaTeamSensor(RbfaEntity, SensorEntity):
+    """Représente l'équipe configurée."""
+
     def __init__(
         self,
         coordinator: MyCoordinator,
-        description: RbfaSensorEntityDescription,
-        entry,
-        collection,
+        entry: ConfigEntry,
+        team_id: str,
     ) -> None:
+        """Initialize the team sensor."""
         super().__init__(coordinator)
-        self.entity_description = description
-        self.collection = collection
-        self.team = entry.data.get('team')
-        self._attr_unique_id = f"{DOMAIN}_{collection}_{description.key}_{self.team}"
+        self.team_id = team_id
+        self._attr_name = entry.data.get('alt_name', f"Team {team_id}")
+        self._attr_unique_id = f"{DOMAIN}_team_{team_id}"
+        self._attr_icon = "mdi:shield-account"
 
     @property
-    def native_value(self):
-        data = self.coordinator.data[self.collection]
-        if data != None:
-            return data[self.entity_description.key]
+    def native_value(self) -> str | None:
+        """Return the team name."""
+        return self._attr_name
 
     @property
-    def entity_picture(self):
-        col = self.collection
-        data = self.coordinator.data[col]
-
-        if data != None:
-            key = self.entity_description.key
-
-            if key in ['hometeam', 'awayteam']:
-                entity_picture = data[key + 'logo']
-                return entity_picture
-    
-            if key == 'series':
-                logo = data['channel'].upper()
-                entity_picture = f"https://www.rbfa.be/assets/img/icons/organisers/Logo{logo}.svg"
-                return entity_picture
+    def entity_picture(self) -> str | None:
+        """Return the team logo."""
+        data = self.coordinator.data.get('upcoming') or self.coordinator.data.get('lastmatch')
+        if not data:
+            return None
+        
+        # Détermine si c'est l'équipe à domicile ou extérieure
+        if data.get('hometeamid') == self.team_id:
+            return data.get('hometeamlogo')
+        elif data.get('awayteamid') == self.team_id:
+            return data.get('awayteamlogo')
+        return None
 
     @property
-    def extra_state_attributes(self):
-        """Return attributes for sensor."""
-
-        col = self.collection
-        data = self.coordinator.data[col]
-        attributes = {
-            'baseid': self.team,
-            'tag': col,
+    def extra_state_attributes(self) -> dict:
+        """Return team attributes."""
+        return {
+            'team_id': self.team_id,
+            'integration': 'RBFA',
         }
 
-        if data != None:
-            key = self.entity_description.key
 
-            if key in ['hometeam', 'awayteam']:
-                results = ['id', 'goals', 'penalties', 'position']
+class RbfaMatchSensor(RbfaEntity, SensorEntity):
+    """Représente un match (dernier ou prochain)."""
 
-                for t in results:
-                    result = data[key + t]
-                    if result != None:
-                        attributes[t] = result
+    def __init__(
+        self,
+        coordinator: MyCoordinator,
+        entry: ConfigEntry,
+        team_id: str,
+        match_type: str,
+    ) -> None:
+        """Initialize the match sensor.
+        
+        Args:
+            match_type: "last" pour dernier match, "upcoming" pour prochain match
+        """
+        super().__init__(coordinator)
+        self.team_id = team_id
+        self.match_type = match_type
+        
+        # Déterminer la clé de données en fonction du type
+        self._data_key = "lastmatch" if match_type == "last" else "upcoming"
+        
+        # Configuration du nom et de l'icône
+        if match_type == "last":
+            self._attr_name = f"{entry.data.get('alt_name', 'Team')} - Dernier Match"
+            self._attr_icon = "mdi:history"
+        else:
+            self._attr_name = f"{entry.data.get('alt_name', 'Team')} - Prochain Match"
+            self._attr_icon = "mdi:calendar-clock"
+        
+        self._attr_unique_id = f"{DOMAIN}_{match_type}_match_{team_id}"
 
-            if key == 'series' and data['ranking']:
-                attributes['ranking'] = data['ranking']
+    @property
+    def native_value(self) -> str | None:
+        """Return match status or score."""
+        data = self.coordinator.data.get(self._data_key)
+        if not data:
+            return "Aucun match"
+        
+        home = data.get('hometeam', '?')
+        away = data.get('awayteam', '?')
+        
+        # Pour le dernier match, afficher le score si disponible
+        if self.match_type == "last":
+            home_goals = data.get('hometeamgoals')
+            away_goals = data.get('awayteamgoals')
+            if home_goals is not None and away_goals is not None:
+                return f"{home} {home_goals} - {away_goals} {away}"
+        
+        # Pour le prochain match ou si pas de score
+        return f"{home} vs {away}"
 
+    @property
+    def entity_picture(self) -> str | None:
+        """Return the logo of our team."""
+        data = self.coordinator.data.get(self._data_key)
+        if not data:
+            return None
+        
+        # Retourner le logo de notre équipe
+        if data.get('hometeamid') == self.team_id:
+            return data.get('hometeamlogo')
+        elif data.get('awayteamid') == self.team_id:
+            return data.get('awayteamlogo')
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Return match attributes."""
+        data = self.coordinator.data.get(self._data_key)
+        if not data:
+            return {
+                'match_type': self.match_type,
+                'status': 'unavailable',
+            }
+        
+        attributes = {
+            'match_type': self.match_type,
+            'match_id': data.get('matchid'),
+            'series': data.get('series'),
+            
+            # Équipe à domicile
+            'domicile': data.get('hometeam'),
+            'domicile_id': data.get('hometeamid'),
+            'domicile_logo': data.get('hometeamlogo'),
+            'domicile_position': data.get('hometeamposition'),
+            
+            # Équipe extérieure
+            'exterieur': data.get('awayteam'),
+            'exterieur_id': data.get('awayteamid'),
+            'exterieur_logo': data.get('awayteamlogo'),
+            'exterieur_position': data.get('awayteamposition'),
+            
+            # Détails du match
+            'heure': data.get('starttime'),
+            'date_fin': data.get('endtime'),
+            'localisation': data.get('location'),
+            'arbitre': data.get('referee'),
+            
+            # URL du match
+            'match_url': f"https://www.rbfa.be/nl/wedstrijd/{data.get('matchid')}" if data.get('matchid') else None,
+        }
+        
+        # Ajouter le score pour le dernier match
+        if self.match_type == "last":
+            attributes['domicile_score'] = data.get('hometeamgoals')
+            attributes['exterieur_score'] = data.get('awayteamgoals')
+            attributes['domicile_penalties'] = data.get('hometeampenalties')
+            attributes['exterieur_penalties'] = data.get('awayteampenalties')
+        
+        # Ajouter le classement si disponible
+        if data.get('ranking'):
+            attributes['classement'] = data.get('ranking')
+        
+        # Ajouter le channel (ACFF/VV)
+        if data.get('channel'):
+            attributes['channel'] = data.get('channel')
+            attributes['channel_logo'] = f"https://www.rbfa.be/assets/img/icons/organisers/Logo{data.get('channel').upper()}.svg"
+        
         return attributes
