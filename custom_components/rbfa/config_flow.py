@@ -14,10 +14,8 @@ _LOGGER = logging.getLogger(__name__)
 
 class RbfaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Example config flow."""
-    # The schema version of the entries that it creates
-    # Home Assistant will call your migrate method if the version changes
     VERSION = 1
-    MINOR_VERSION = 1
+    MINOR_VERSION = 2
 
 
     async def async_step_user(self, user_input):
@@ -26,6 +24,7 @@ class RbfaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             team = user_input.get('team')
             duration = user_input.get('duration')
             show_ranking = user_input.get('show_ranking')
+            language = user_input.get('language')
 
             await self.async_set_unique_id(f"{team}")
             self._abort_if_unique_id_configured()
@@ -44,6 +43,16 @@ class RbfaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         step=5,
                         mode=selector.NumberSelectorMode.BOX,
                         unit_of_measurement=UnitOfTime.MINUTES,
+                    ),
+                ),
+                vol.Required('language', default='nl'): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(value="nl", label="Nederlands"),
+                            selector.SelectOptionDict(value="fr", label="Français"),
+                            selector.SelectOptionDict(value="en", label="English"),
+                        ],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
                     ),
                 ),
                 vol.Required('show_ranking', default=True): bool,
@@ -91,6 +100,13 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         else:
             duration = self.config_entry.data['duration']
 
+        if 'language' in self.config_entry.options:
+            language = self.config_entry.options['language']
+        elif 'language' in self.config_entry.data:
+            language = self.config_entry.data['language']
+        else:
+            language = 'nl'
+
         if 'show_ranking' in self.config_entry.options:
             show_ranking = self.config_entry.options['show_ranking']
         elif 'show_ranking' in self.config_entry.data:
@@ -105,7 +121,6 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         else:
             show_referee = True
 
-# https://community.home-assistant.io/t/voluptuous-options-flow-validation-for-an-optional-string-how/305538/3
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
@@ -119,6 +134,16 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                             step=5,
                             mode=selector.NumberSelectorMode.BOX,
                             unit_of_measurement=UnitOfTime.MINUTES,
+                        ),
+                    ),
+                    vol.Required('language', default=language): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[
+                                selector.SelectOptionDict(value="nl", label="Nederlands"),
+                                selector.SelectOptionDict(value="fr", label="Français"),
+                                selector.SelectOptionDict(value="en", label="English"),
+                            ],
+                            mode=selector.SelectSelectorMode.DROPDOWN,
                         ),
                     ),
                     vol.Required('show_ranking', default=show_ranking): bool,
