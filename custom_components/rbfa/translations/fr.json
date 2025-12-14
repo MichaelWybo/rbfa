@@ -112,7 +112,7 @@
             }
          },
          "starttime":{
-            "name":"Start",
+            "name":"Début",
             "state_attributes":{
                "team":{
                   "name":"Équipe"
