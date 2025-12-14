@@ -14,6 +14,13 @@ import logging
 
 _LOGGER = logging.getLogger(__name__)
 
+# Mapping langue -> mot clé URL pour le match
+MATCH_URL_KEYWORDS = {
+    'nl': 'wedstrijd',
+    'fr': 'match',
+    'en': 'game',
+}
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -23,12 +30,15 @@ async def async_setup_entry(
     """Set up RBFA sensor based on a config entry."""
     coordinator: MyCoordinator = hass.data[DOMAIN][entry.entry_id]
     team_id = entry.data.get('team')
+    
+    # Récupérer la langue depuis la config (data ou options)
+    language = entry.options.get('language') or entry.data.get('language', 'nl')
 
     # Créer exactement 3 entités
     entities = [
         RbfaTeamSensor(coordinator, entry, team_id),
-        RbfaMatchSensor(coordinator, entry, team_id, "last"),
-        RbfaMatchSensor(coordinator, entry, team_id, "upcoming"),
+        RbfaMatchSensor(coordinator, entry, team_id, "last", language),
+        RbfaMatchSensor(coordinator, entry, team_id, "upcoming", language),
     ]
 
     async_add_entities(entities)
@@ -46,7 +56,11 @@ class RbfaTeamSensor(RbfaEntity, SensorEntity):
         """Initialize the team sensor."""
         super().__init__(coordinator)
         self.team_id = team_id
-        self._attr_name = entry.data.get('alt_name', f"Team {team_id}")
+        
+        # Récupérer le nom alternatif depuis data ou options
+        alt_name = entry.options.get('alt_name') or entry.data.get('alt_name')
+        self._attr_name = alt_name if alt_name else f"Team {team_id}"
+        
         self._attr_unique_id = f"{DOMAIN}_team_{team_id}"
         self._attr_icon = "mdi:shield-account"
 
@@ -87,28 +101,40 @@ class RbfaMatchSensor(RbfaEntity, SensorEntity):
         entry: ConfigEntry,
         team_id: str,
         match_type: str,
+        language: str = 'nl',
     ) -> None:
         """Initialize the match sensor.
         
         Args:
             match_type: "last" pour dernier match, "upcoming" pour prochain match
+            language: Code langue pour l'URL (nl, fr, en)
         """
         super().__init__(coordinator)
         self.team_id = team_id
         self.match_type = match_type
+        self.language = language
         
         # Déterminer la clé de données en fonction du type
         self._data_key = "lastmatch" if match_type == "last" else "upcoming"
         
+        # Récupérer le nom alternatif
+        alt_name = entry.options.get('alt_name') or entry.data.get('alt_name')
+        team_name = alt_name if alt_name else 'Team'
+        
         # Configuration du nom et de l'icône
         if match_type == "last":
-            self._attr_name = f"{entry.data.get('alt_name', 'Team')} - Dernier Match"
+            self._attr_name = f"{team_name} - Dernier Match"
             self._attr_icon = "mdi:history"
         else:
-            self._attr_name = f"{entry.data.get('alt_name', 'Team')} - Prochain Match"
+            self._attr_name = f"{team_name} - Prochain Match"
             self._attr_icon = "mdi:calendar-clock"
         
         self._attr_unique_id = f"{DOMAIN}_{match_type}_match_{team_id}"
+
+    def _get_match_url(self, match_id: str) -> str:
+        """Génère l'URL du match en fonction de la langue configurée."""
+        keyword = MATCH_URL_KEYWORDS.get(self.language, 'wedstrijd')
+        return f"https://www.rbfa.be/{self.language}/{keyword}/{match_id}"
 
     @property
     def native_value(self) -> str | None:
@@ -152,11 +178,15 @@ class RbfaMatchSensor(RbfaEntity, SensorEntity):
             return {
                 'match_type': self.match_type,
                 'status': 'unavailable',
+                'language': self.language,
             }
+        
+        match_id = data.get('matchid')
         
         attributes = {
             'match_type': self.match_type,
-            'match_id': data.get('matchid'),
+            'language': self.language,
+            'match_id': match_id,
             'series': data.get('series'),
             
             # Équipe à domicile
@@ -177,8 +207,8 @@ class RbfaMatchSensor(RbfaEntity, SensorEntity):
             'localisation': data.get('location'),
             'arbitre': data.get('referee'),
             
-            # URL du match
-            'match_url': f"https://www.rbfa.be/nl/wedstrijd/{data.get('matchid')}" if data.get('matchid') else None,
+            # URL du match avec la bonne langue
+            'match_url': self._get_match_url(match_id) if match_id else None,
         }
         
         # Ajouter le score pour le dernier match
