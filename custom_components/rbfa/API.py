@@ -15,14 +15,15 @@ class TeamApp(object):
         self.hass = hass
         self.team = my_api.data['team']
 
-    def __get_url(self, operation, value):
+    def __get_url(self, operation, value, language='nl'):
         try:
             main_url = 'https://datalake-prod2018.rbfa.be/graphql'
-            url = '{}?operationName={}&variables={{"{}":"{}","language":"nl"}}&extensions={{"persistedQuery":{{"version":1,"sha256Hash":"{}"}}}}'.format(
+            url = '{}?operationName={}&variables={{"{}":"{}","language":"{}"}}&extensions={{"persistedQuery":{{"version":1,"sha256Hash":"{}"}}}}'.format(
                 main_url,
                 operation,
                 VARIABLES[operation],
                 value,
+                language,
                 HASHES[operation]
             )
             response = self.s.get(url)
